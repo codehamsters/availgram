@@ -331,6 +331,17 @@ export default function InstagramUsernameFinder() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg">
+              <p className="font-semibold">Important Note:</p>
+              <p>
+                This tool may occasionally display usernames that are already
+                taken.
+              </p>
+              <p>
+                For an optimal experience, we recommend using this tool on a
+                desktop or PC.
+              </p>
+            </div>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-3">
                 <Label htmlFor="length" className="text-sm font-medium">
@@ -499,7 +510,7 @@ export default function InstagramUsernameFinder() {
                   Scanning Usernames...
                 </h3>
                 <p className="text-gray-600">
-                  Checked {totalChecked} usernames, Found
+                  Checked {totalChecked} usernames, Found{" "}
                   {availableResults.length}
                 </p>
                 <div

@@ -91,6 +91,7 @@ export async function GET(request: Request) {
     });
 
     const data = await response.json();
+    console.log("Response from Instagram API:", data);
 
     let isAvailable = false;
 
