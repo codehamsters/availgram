@@ -76,6 +76,7 @@ export async function GET(request: Request) {
     });
 
     const data = await res.json();
+    console.log("Instagram API Response:",data);
     let isAvailable = false;
 
     if (!data.errors || !data.errors.username) {
