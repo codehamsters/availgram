@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
 import clientPromise from "../mongodb";
 
-let cachedCsrfToken = "";
-let csrfTokenExpiry = 0;
 
 async function getCsrfToken() {
-  const now = Date.now();
-  if (cachedCsrfToken && now < csrfTokenExpiry) {
-    return cachedCsrfToken;
-  }
 
   const signupResponse = await fetch("https://www.instagram.com/accounts/emailsignup/", {
     method: "GET",
@@ -26,10 +20,6 @@ async function getCsrfToken() {
   if (!csrfToken) {
     throw new Error("Failed to obtain CSRF token");
   }
-
-  // Cache token for 1 hour
-  cachedCsrfToken = csrfToken;
-  csrfTokenExpiry = now + 3600 * 1000;
 
   return csrfToken;
 }
