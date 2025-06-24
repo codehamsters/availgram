@@ -1,27 +1,31 @@
 import { NextResponse } from "next/server";
 import clientPromise from "../mongodb";
 
+const userAgents = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+];
 
-async function getCsrfToken() {
-
-  const signupResponse = await fetch("https://www.instagram.com/accounts/emailsignup/", {
+async function getCsrfAndCookie() {
+  const response = await fetch("https://www.instagram.com/accounts/emailsignup/", {
     method: "GET",
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+      "User-Agent": userAgents[Math.floor(Math.random() * userAgents.length)],
+      "Accept": "text/html,application/xhtml+xml",
     },
   });
 
-  const cookies = signupResponse.headers.get("set-cookie") || "";
-  const csrfTokenMatch = cookies.match(/csrftoken=([^;]+)/);
-  const csrfToken = csrfTokenMatch ? csrfTokenMatch[1] : "";
+  const cookies = response.headers.get("set-cookie") || "";
+  const csrfToken = cookies.match(/csrftoken=([^;]+)/)?.[1] || "";
+  const mid = cookies.match(/mid=([^;]+)/)?.[1] || "";
 
-  if (!csrfToken) {
-    throw new Error("Failed to obtain CSRF token");
-  }
+  if (!csrfToken) throw new Error("Could not extract CSRF token");
 
-  return csrfToken;
+  return {
+    csrfToken,
+    cookie: `csrftoken=${csrfToken}; mid=${mid}`
+  };
 }
 
 export async function GET(request: Request) {
@@ -37,66 +41,47 @@ export async function GET(request: Request) {
     const db = client.db("availgram");
     const collection = db.collection("usernames");
 
-    // Create TTL index on checkedAt field to expire documents after 1 day (86400 seconds)
     await collection.createIndex({ checkedAt: 1 }, { expireAfterSeconds: 86400 });
 
-    // Check if username exists in DB
     const existing = await collection.findOne({ username });
-
     if (existing) {
-      if (existing.isAvailable === false) {
-        // Return stored availability
-        return NextResponse.json({ isAvailable: existing.isAvailable });
-      }
+      return NextResponse.json({ isAvailable: existing.isAvailable });
     }
 
-    const csrfToken = await getCsrfToken();
+    const { csrfToken, cookie } = await getCsrfAndCookie();
+    const userAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
 
-    // Instagram internal API endpoint for username availability check
-    const apiUrl = "https://www.instagram.com/api/v1/web/accounts/web_create_ajax/attempt/";
+    const payload = new URLSearchParams({
+      username,
+      email: `fake${Date.now()}@example.com`,
+      first_name: `User${Math.floor(Math.random() * 999)}`,
+      opt_into_one_tap: "false",
+      use_new_suggested_user_name: "true",
+      jazoest: "22470" // optional: dynamic generation if needed
+    });
 
-    // Prepare POST payload
-    const payload = new URLSearchParams();
-    payload.append("username", username);
-    payload.append("email", ""); // Required field, empty string
-    payload.append("first_name", ""); // Required field, empty string
-    payload.append("opt_into_one_tap", "false");
-    payload.append("use_new_suggested_user_name", "true");
-    payload.append("jazoest", "22035"); // This value may need to be dynamic or updated
-
-    // Make POST request to Instagram internal API with CSRF token
-    const response = await fetch(apiUrl, {
+    const res = await fetch("https://www.instagram.com/api/v1/web/accounts/web_create_ajax/attempt/", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        "Accept": "application/json",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": userAgent,
         "X-Requested-With": "XMLHttpRequest",
         "Referer": "https://www.instagram.com/accounts/emailsignup/",
         "X-CSRFToken": csrfToken,
-        "Cookie": `csrftoken=${csrfToken}`,
+        "Cookie": cookie
       },
-      body: payload.toString(),
+      body: payload.toString()
     });
 
-    const data = await response.json();
-    console.log("Response from Instagram API:", data);
-
+    const data = await res.json();
     let isAvailable = false;
 
-    // If there is no username error in the response, username is available
     if (!data.errors || !data.errors.username) {
       isAvailable = true;
-    } else {
-      // Username is taken if error code username_is_taken exists
-      const usernameErrors = data.errors.username;
-      if (usernameErrors.some((e: any) => e.code === "username_is_taken")) {
-        isAvailable = false;
-      }
     }
 
-    // Store the result in DB with username length
     await collection.updateOne(
       { username },
       { $set: { username, isAvailable, length: username.length, checkedAt: new Date() } },
@@ -104,7 +89,8 @@ export async function GET(request: Request) {
     );
 
     return NextResponse.json({ isAvailable });
-  } catch (error) {
+  } catch (err) {
+    console.error("Error checking username:", err);
     return NextResponse.json({ error: "Failed to check username" }, { status: 500 });
   }
 }
